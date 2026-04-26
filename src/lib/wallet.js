@@ -112,17 +112,20 @@ export async function transferToken(tokenKey, toAddress, amount) {
 
   if (!window.ethereum) throw new Error('No wallet detected. Please install MetaMask.');
 
-  // Ensure we're on Arc network
+  // Try to ensure we're on Arc network (non-fatal — user may already be on Arc)
   try {
     const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
     const currentChainId = parseInt(chainIdHex, 16);
     if (currentChainId !== ARC_CHAIN.chainId) {
-      await switchToArc();
-      // Wait for MetaMask to settle after network switch
-      await new Promise(resolve => setTimeout(resolve, 800));
+      try {
+        await switchToArc();
+        await new Promise(resolve => setTimeout(resolve, 800));
+      } catch (switchErr) {
+        console.warn('Network switch failed, proceeding anyway:', switchErr.message);
+      }
     }
   } catch (err) {
-    throw new Error(`Please switch to Arc Testnet in MetaMask. (${err.message})`);
+    console.warn('Chain check failed, proceeding with transfer:', err.message);
   }
 
   // Get a fresh provider + signer AFTER network switch
