@@ -14,17 +14,30 @@ export async function connectWallet() {
     throw new Error('MetaMask is not installed. Please install MetaMask to continue.');
   }
 
-  // Request account access
+  // Force MetaMask to show the account picker (not just reuse the last one)
   let accounts;
   try {
+    // wallet_requestPermissions forces the account selection popup
+    const permissions = await window.ethereum.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+    // After permission granted, get the selected accounts
     accounts = await window.ethereum.request({
-      method: 'eth_requestAccounts',
+      method: 'eth_accounts',
     });
   } catch (err) {
     if (err.code === 4001) {
       throw new Error('Connection rejected. Please approve the wallet connection.');
     }
-    throw err;
+    // Fallback to eth_requestAccounts if wallet_requestPermissions isn't supported
+    try {
+      accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+    } catch (fallbackErr) {
+      throw fallbackErr;
+    }
   }
 
   if (!accounts || accounts.length === 0) {
