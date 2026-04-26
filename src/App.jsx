@@ -104,7 +104,7 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="logo-section">
-          <div className="logo-icon">⚡</div>
+          <img src="/logo.png" alt="Arc Nexus Logo" className="logo-image" />
           <div className="logo-text">
             <h1>Arc Nexus</h1>
             <span>Institutional Finance on Arc</span>
