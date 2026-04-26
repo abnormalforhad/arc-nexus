@@ -69,7 +69,7 @@ export default function NetworkHealth() {
       <div className="grid-4 section-gap">
         <div className="stat-card">
           <div className="stat-label">Block Height</div>
-          <div className="stat-value" style={{ color: 'var(--accent)' }}>
+          <div className="stat-value">
             {loading ? '...' : `#${data.blockNumber?.toLocaleString()}`}
           </div>
         </div>
@@ -80,13 +80,13 @@ export default function NetworkHealth() {
         </div>
         <div className="stat-card">
           <div className="stat-label">Block Time</div>
-          <div className="stat-value" style={{ color: 'var(--success)' }}>
+          <div className="stat-value" style={{ background: 'linear-gradient(135deg, #10b981, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             {data.blockTime != null ? `${data.blockTime}s` : '—'}
           </div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Gas Price</div>
-          <div className="stat-value" style={{ color: 'var(--warning)' }}>
+          <div className="stat-value" style={{ background: 'linear-gradient(135deg, #f59e0b, #f97316)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             {data.gasPrice ? `${Number(data.gasPrice).toFixed(2)}` : '—'}
           </div>
           <div className="stat-sub">Gwei (paid in USDC)</div>

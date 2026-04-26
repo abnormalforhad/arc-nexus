@@ -84,20 +84,20 @@ export default function LiveExplorer() {
       <div className="grid-3 section-gap">
         <div className="stat-card">
           <div className="stat-label">Latest Block</div>
-          <div className="stat-value" style={{ color: 'var(--accent)' }}>
+          <div className="stat-value">
             {blocks[0] ? `#${blocks[0].number.toLocaleString()}` : '—'}
           </div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Avg Block Time</div>
-          <div className="stat-value" style={{ color: 'var(--success)' }}>
+          <div className="stat-value" style={{ background: 'linear-gradient(135deg, #10b981, #06b6d4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             {avgBlockTime ? `${avgBlockTime}s` : '—'}
           </div>
           <div className="stat-sub">Malachite BFT Consensus</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Feed Status</div>
-          <div className="stat-value" style={{ color: isLive ? 'var(--success)' : 'var(--warning)' }}>
+          <div className="stat-value" style={{ background: isLive ? 'linear-gradient(135deg, #10b981, #06b6d4)' : 'linear-gradient(135deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             {isLive ? '● LIVE' : '○ Connecting'}
           </div>
           <div className="stat-sub">Real-time RPC polling</div>
