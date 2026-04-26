@@ -53,12 +53,37 @@ export async function connectWallet() {
 
 /**
  * Fetch USDC, EURC, USYC balances for an address
+ * Note: On Arc, USDC is the native gas token. We use getBalance() for USDC
+ * and ERC-20 balanceOf() for EURC/USYC.
  */
 export async function fetchBalances(address) {
   const provider = getProvider();
   const balances = {};
 
+  // Fetch native USDC balance (Arc's gas token)
+  try {
+    const nativeBal = await provider.getBalance(address);
+    // Native balance is 18 decimals, but we display as USDC (show as regular number)
+    const formatted = ethers.formatUnits(nativeBal, 18);
+    balances.USDC = {
+      raw: nativeBal.toString(),
+      formatted: formatted,
+      symbol: 'USDC',
+    };
+    balances.NATIVE = {
+      raw: nativeBal.toString(),
+      formatted: formatted,
+      symbol: 'USDC (Gas)',
+    };
+  } catch (err) {
+    console.warn('Failed to fetch native USDC balance:', err.message);
+    balances.USDC = { raw: '0', formatted: '0.00', symbol: 'USDC' };
+    balances.NATIVE = { raw: '0', formatted: '0.00', symbol: 'USDC (Gas)' };
+  }
+
+  // Fetch ERC-20 token balances (EURC, USYC)
   for (const [key, token] of Object.entries(TOKENS)) {
+    if (key === 'USDC') continue; // Already fetched as native
     try {
       const contract = new ethers.Contract(token.address, ERC20_ABI, provider);
       const raw = await contract.balanceOf(address);
@@ -73,54 +98,90 @@ export async function fetchBalances(address) {
     }
   }
 
-  // Also fetch native balance (USDC gas)
-  try {
-    const nativeBal = await provider.getBalance(address);
-    balances.NATIVE = {
-      raw: nativeBal.toString(),
-      formatted: ethers.formatUnits(nativeBal, 18),
-      symbol: 'USDC (Gas)',
-    };
-  } catch (err) {
-    balances.NATIVE = { raw: '0', formatted: '0.00', symbol: 'USDC (Gas)' };
-  }
-
   return balances;
 }
 
 /**
- * Transfer ERC-20 tokens on Arc
+ * Transfer tokens on Arc
+ * USDC: Can be sent as native value transfer (like ETH) since USDC is Arc's native gas token
+ * EURC/others: Standard ERC-20 transfer
  */
 export async function transferToken(tokenKey, toAddress, amount) {
   const token = TOKENS[tokenKey];
   if (!token) throw new Error(`Unknown token: ${tokenKey}`);
 
-  const browserProvider = getBrowserProvider();
-  if (!browserProvider) throw new Error('No wallet connected. Please connect your wallet first.');
+  if (!window.ethereum) throw new Error('No wallet detected. Please install MetaMask.');
 
-  // Verify we're on Arc network before sending
+  // Ensure we're on Arc network
   try {
-    const network = await browserProvider.getNetwork();
-    if (Number(network.chainId) !== ARC_CHAIN.chainId) {
-      // Try switching
+    const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+    const currentChainId = parseInt(chainIdHex, 16);
+    if (currentChainId !== ARC_CHAIN.chainId) {
       await switchToArc();
-      // Small delay to let MetaMask settle after switching
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for MetaMask to settle after network switch
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
   } catch (err) {
-    console.warn('Network check failed:', err.message);
-    // Proceed anyway — the tx will fail if wrong network
+    throw new Error(`Please switch to Arc Testnet in MetaMask. (${err.message})`);
   }
 
-  // Get a fresh signer after potential network switch
-  const freshProvider = getBrowserProvider();
-  const signer = await freshProvider.getSigner();
-  const contract = new ethers.Contract(token.address, ERC20_ABI, signer);
+  // Get a fresh provider + signer AFTER network switch
+  const browserProvider = new ethers.BrowserProvider(window.ethereum, {
+    chainId: ARC_CHAIN.chainId,
+    name: ARC_CHAIN.name,
+  });
+  const signer = await browserProvider.getSigner();
 
-  const amountWei = ethers.parseUnits(amount, token.decimals);
-  const tx = await contract.transfer(toAddress, amountWei);
+  if (tokenKey === 'USDC') {
+    // ===== USDC: Native value transfer =====
+    // On Arc, USDC is the native gas token (18 decimals for native transfers)
+    const amountWei = ethers.parseUnits(amount, 18); // Native uses 18 decimals
 
-  return tx;
+    // Check the user has enough native balance
+    const balance = await browserProvider.getBalance(signer.address);
+    if (balance < amountWei) {
+      const balFormatted = ethers.formatUnits(balance, 18);
+      throw new Error(
+        `Insufficient USDC balance. You have ${Number(balFormatted).toFixed(4)} USDC but tried to send ${amount} USDC. ` +
+        `Get testnet USDC from faucet.circle.com`
+      );
+    }
+
+    // Send as native transfer (like sending ETH)
+    const tx = await signer.sendTransaction({
+      to: toAddress,
+      value: amountWei,
+    });
+    return tx;
+  } else {
+    // ===== EURC / other ERC-20 tokens: Standard ERC-20 transfer =====
+    const contract = new ethers.Contract(token.address, ERC20_ABI, signer);
+
+    const amountParsed = ethers.parseUnits(amount, token.decimals);
+
+    // Check ERC-20 balance first
+    const balance = await contract.balanceOf(signer.address);
+    if (balance < amountParsed) {
+      const balFormatted = ethers.formatUnits(balance, token.decimals);
+      throw new Error(
+        `Insufficient ${token.symbol} balance. You have ${Number(balFormatted).toFixed(4)} ${token.symbol} but tried to send ${amount}. ` +
+        `Get testnet ${token.symbol} from faucet.circle.com`
+      );
+    }
+
+    // Estimate gas to catch revert before sending
+    try {
+      await contract.transfer.estimateGas(toAddress, amountParsed);
+    } catch (gasErr) {
+      throw new Error(
+        `Transaction will fail: ${gasErr.reason || gasErr.message || 'Unknown error'}. ` +
+        `Make sure you have enough USDC for gas fees.`
+      );
+    }
+
+    const tx = await contract.transfer(toAddress, amountParsed);
+    return tx;
+  }
 }
 
 /**
