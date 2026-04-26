@@ -31,15 +31,24 @@ export default function App() {
         if (event.accounts.length === 0) {
           setWallet(null);
         } else {
-          const balances = await fetchBalances(event.accounts[0]);
-          setWallet({ address: event.accounts[0], balances });
+          try {
+            const balances = await fetchBalances(event.accounts[0]);
+            setWallet({ address: event.accounts[0], balances });
+          } catch (err) {
+            console.warn('Failed to fetch balances on account change:', err.message);
+            setWallet({ address: event.accounts[0], balances: {} });
+          }
         }
       }
       if (event.type === 'chainChanged') {
         // Refresh balances on chain change
         if (wallet?.address) {
-          const balances = await fetchBalances(wallet.address);
-          setWallet(prev => ({ ...prev, balances }));
+          try {
+            const balances = await fetchBalances(wallet.address);
+            setWallet(prev => ({ ...prev, balances }));
+          } catch (err) {
+            console.warn('Failed to refresh balances on chain change:', err.message);
+          }
         }
       }
     });
@@ -52,21 +61,37 @@ export default function App() {
     try {
       const w = await connectWallet();
       setWallet(w);
+      setError(''); // Clear any previous errors
     } catch (err) {
       setError(err.message);
+      // Don't null out wallet if we already have one — partial connection is ok
+    } finally {
+      setConnecting(false);
     }
-    setConnecting(false);
+  }
+
+  // Called by TransferPanel after successful tx to refresh balances
+  async function refreshBalances() {
+    if (wallet?.address) {
+      try {
+        const balances = await fetchBalances(wallet.address);
+        setWallet(prev => ({ ...prev, balances }));
+      } catch (err) {
+        console.warn('Balance refresh failed:', err.message);
+      }
+    }
   }
 
   function handleDisconnect() {
     setWallet(null);
+    setError('');
   }
 
   function renderContent() {
     switch (activeTab) {
       case 'explorer': return <LiveExplorer />;
       case 'wallet': return <WalletDashboard wallet={wallet} onDisconnect={handleDisconnect} />;
-      case 'transfer': return <TransferPanel wallet={wallet} />;
+      case 'transfer': return <TransferPanel wallet={wallet} onTransferComplete={refreshBalances} />;
       case 'swap': return <StableFXPanel />;
       case 'bridge': return <BridgeTracker />;
       case 'network': return <NetworkHealth />;

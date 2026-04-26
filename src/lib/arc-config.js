@@ -13,7 +13,7 @@ export const ARC_CHAIN = {
   nativeCurrency: {
     name: 'USDC',
     symbol: 'USDC',
-    decimals: 6,
+    decimals: 18,
   },
 };
 
@@ -96,13 +96,21 @@ export async function addArcToMetaMask() {
       params: [{
         chainId: ARC_CHAIN.chainIdHex,
         chainName: ARC_CHAIN.name,
-        nativeCurrency: ARC_CHAIN.nativeCurrency,
+        nativeCurrency: {
+          name: ARC_CHAIN.nativeCurrency.name,
+          symbol: ARC_CHAIN.nativeCurrency.symbol,
+          decimals: 18,  // MetaMask requires 18 for native currency
+        },
         rpcUrls: [ARC_CHAIN.rpcUrl],
         blockExplorerUrls: [ARC_CHAIN.explorerUrl],
       }],
     });
     return true;
   } catch (err) {
+    // User rejected or already added — not fatal
+    if (err.code === 4001) {
+      throw new Error('User rejected adding Arc network');
+    }
     console.error('Failed to add Arc network:', err);
     throw err;
   }
@@ -121,9 +129,13 @@ export async function switchToArc() {
     });
     return true;
   } catch (err) {
-    // Chain not added — add it
-    if (err.code === 4902) {
+    // Chain not added — add it (4902 = unrecognized chain, -32603 = internal error on some wallets)
+    if (err.code === 4902 || err.code === -32603) {
       return addArcToMetaMask();
+    }
+    // User rejected — not fatal
+    if (err.code === 4001) {
+      throw new Error('User rejected switching to Arc network');
     }
     throw err;
   }

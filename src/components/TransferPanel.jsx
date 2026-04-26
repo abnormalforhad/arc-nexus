@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { TOKENS, ARC_CHAIN } from '../lib/arc-config';
 import { transferToken } from '../lib/wallet';
 
-export default function TransferPanel({ wallet }) {
+export default function TransferPanel({ wallet, onTransferComplete }) {
   const [token, setToken] = useState('USDC');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -41,8 +41,14 @@ export default function TransferPanel({ wallet }) {
       setTxHash(tx.hash);
 
       const receipt = await tx.wait();
-      setStatus(receipt.status === 1 ? 'confirmed' : 'error');
-      if (receipt.status !== 1) setError('Transaction reverted');
+      if (receipt.status === 1) {
+        setStatus('confirmed');
+        // Refresh wallet balances after successful transfer
+        if (onTransferComplete) onTransferComplete();
+      } else {
+        setStatus('error');
+        setError('Transaction reverted');
+      }
     } catch (err) {
       setStatus('error');
       setError(err.reason || err.message || 'Transaction failed');

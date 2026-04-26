@@ -15,19 +15,38 @@ export async function connectWallet() {
   }
 
   // Request account access
-  const accounts = await window.ethereum.request({
-    method: 'eth_requestAccounts',
-  });
+  let accounts;
+  try {
+    accounts = await window.ethereum.request({
+      method: 'eth_requestAccounts',
+    });
+  } catch (err) {
+    if (err.code === 4001) {
+      throw new Error('Connection rejected. Please approve the wallet connection.');
+    }
+    throw err;
+  }
 
   if (!accounts || accounts.length === 0) {
     throw new Error('No accounts found. Please unlock MetaMask.');
   }
 
-  // Switch to Arc network
-  await switchToArc();
+  // Switch to Arc network — don't fail the entire connection if this errors
+  try {
+    await switchToArc();
+  } catch (err) {
+    console.warn('Failed to switch to Arc network:', err.message);
+    // Still proceed — user may already be on Arc or can switch manually
+  }
 
   const address = accounts[0];
-  const balances = await fetchBalances(address);
+  let balances;
+  try {
+    balances = await fetchBalances(address);
+  } catch (err) {
+    console.warn('Failed to fetch initial balances:', err.message);
+    balances = {};
+  }
 
   return { address, balances };
 }
@@ -77,9 +96,25 @@ export async function transferToken(tokenKey, toAddress, amount) {
   if (!token) throw new Error(`Unknown token: ${tokenKey}`);
 
   const browserProvider = getBrowserProvider();
-  if (!browserProvider) throw new Error('No wallet connected');
+  if (!browserProvider) throw new Error('No wallet connected. Please connect your wallet first.');
 
-  const signer = await browserProvider.getSigner();
+  // Verify we're on Arc network before sending
+  try {
+    const network = await browserProvider.getNetwork();
+    if (Number(network.chainId) !== ARC_CHAIN.chainId) {
+      // Try switching
+      await switchToArc();
+      // Small delay to let MetaMask settle after switching
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  } catch (err) {
+    console.warn('Network check failed:', err.message);
+    // Proceed anyway — the tx will fail if wrong network
+  }
+
+  // Get a fresh signer after potential network switch
+  const freshProvider = getBrowserProvider();
+  const signer = await freshProvider.getSigner();
   const contract = new ethers.Contract(token.address, ERC20_ABI, signer);
 
   const amountWei = ethers.parseUnits(amount, token.decimals);
